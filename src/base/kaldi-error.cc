@@ -31,6 +31,9 @@
 #include "base/kaldi-common.h"
 #include "base/kaldi-error.h"
 
+#include <stdlib.h>
+static int KALDI_WARNING_SUPPRESS = -1;
+
 namespace kaldi {
 int32 g_kaldi_verbose_level = 0;  // Just initialize this global variable.
 const char *g_program_name = NULL;
@@ -157,8 +160,22 @@ KaldiWarnMessage::~KaldiWarnMessage() {
   std::string str = ss_.str();
   while (!str.empty() && str[str.length() - 1] == '\n')
     str.resize(str.length() - 1);
-  fprintf(stderr, "%s\n", str.c_str());
+  if (KALDI_WARNING_SUPPRESS < 0) {
+    const char* envvar = getenv("KALDI_WARNING_SUPPRESS");
+    if (!envvar) {
+      KALDI_WARNING_SUPPRESS = 0;
+    }
+    else if (strcmp(envvar, "1") == 0) {
+      KALDI_WARNING_SUPPRESS = 1;
+    } else {
+      KALDI_WARNING_SUPPRESS = 0;
+    }
+  }
+  if (KALDI_WARNING_SUPPRESS < 1) {
+    fprintf(stderr, "%s\n", str.c_str());
+  }
 }
+
 
 
 KaldiLogMessage::KaldiLogMessage(const char *func, const char *file,
