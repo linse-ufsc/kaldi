@@ -22,7 +22,7 @@ CXXFLAGS = -msse -msse2 -Wall -I.. \
       -DHAVE_ATLAS -I$(ATLASINC) \
       -I$(FSTROOT)/include \
       $(EXTRA_CXXFLAGS) \
-      -g # -O0 -DKALDI_PARANOID 
+      -g0 -O3  -fPIC# -O0 -DKALDI_PARANOID 
 
 ifeq ($(KALDI_FLAVOR), dynamic)
 CXXFLAGS += -fPIC
