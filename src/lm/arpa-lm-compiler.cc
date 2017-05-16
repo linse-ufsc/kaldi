@@ -27,6 +27,7 @@
 #include "lm/arpa-lm-compiler.h"
 #include "util/stl-utils.h"
 #include "util/text-utils.h"
+#include "fstext/remove-eps-local.h"
 
 namespace kaldi {
 
@@ -71,10 +72,10 @@ class GeneralHistKey {
   std::vector<Symbol> vector_;
 };
 
-// OptimizedHistKey combiness 3 21-bit symbol ID values into one 64-bit
+// OptimizedHistKey combines 3 21-bit symbol ID values into one 64-bit
 // machine word. allowing significant memory reduction and some runtime
-// benefit over GeneralHistKey. Since 3 symbolss are enough to track history
-// in a 4-gram model, this optimized key is used for smalled models with up
+// benefit over GeneralHistKey. Since 3 symbols are enough to track history
+// in a 4-gram model, this optimized key is used for smaller models with up
 // to 4-gram and symbol values up to 2^21-1.
 //
 // See GeneralHistKey for interface requrements of a key class.
@@ -106,18 +107,21 @@ class OptimizedHistKey {
   uint64 data_;
 };
 
+}  // namespace
+
 template <class HistKey>
 class ArpaLmCompilerImpl : public ArpaLmCompilerImplInterface {
  public:
-  ArpaLmCompilerImpl(fst::StdVectorFst* fst, Symbol bos_symbol,
-                     Symbol eos_symbol, Symbol sub_eps);
+  ArpaLmCompilerImpl(ArpaLmCompiler* parent, fst::StdVectorFst* fst,
+                     Symbol sub_eps);
 
-  virtual void ConsumeNGram(const NGram& ngram, bool is_highest);
+  virtual void ConsumeNGram(const NGram &ngram, bool is_highest);
 
  private:
   StateId AddStateWithBackoff(HistKey key, float backoff);
   void CreateBackoff(HistKey key, StateId state, float weight);
 
+  ArpaLmCompiler *parent_;  // Not owned.
   fst::StdVectorFst* fst_;  // Not owned.
   Symbol bos_symbol_;
   Symbol eos_symbol_;
@@ -131,10 +135,9 @@ class ArpaLmCompilerImpl : public ArpaLmCompilerImplInterface {
 
 template <class HistKey>
 ArpaLmCompilerImpl<HistKey>::ArpaLmCompilerImpl(
-    fst::StdVectorFst* fst, Symbol bos_symbol,
-    Symbol eos_symbol, Symbol sub_eps) : fst_(fst), bos_symbol_(bos_symbol),
-                                         eos_symbol_(eos_symbol),
-                                         sub_eps_(sub_eps) {
+    ArpaLmCompiler* parent, fst::StdVectorFst* fst, Symbol sub_eps)
+    : parent_(parent), fst_(fst), bos_symbol_(parent->Options().bos_symbol),
+      eos_symbol_(parent->Options().eos_symbol), sub_eps_(sub_eps) {
   // The algorithm maintains state per history. The 0-gram is a special state
   // for emptry history. All unigrams (including BOS) backoff into this state.
   StateId zerogram = fst_->AddState();
@@ -150,8 +153,8 @@ ArpaLmCompilerImpl<HistKey>::ArpaLmCompilerImpl(
 }
 
 template <class HistKey>
-void ArpaLmCompilerImpl<HistKey>::ConsumeNGram(
-    const NGram& ngram, bool is_highest) {
+void ArpaLmCompilerImpl<HistKey>::ConsumeNGram(const NGram &ngram,
+                                               bool is_highest) {
   // Generally, we do the following. Suppose we are adding an n-gram "A B
   // C". Then find the node for "A B", add a new node for "A B C", and connect
   // them with the arc accepting "C" with the specified weight. Also, add a
@@ -181,7 +184,9 @@ void ArpaLmCompilerImpl<HistKey>::ConsumeNGram(
   if (source_it == history_.end()) {
     // There was no "A B", therefore the probability of "A B C" is zero.
     // Print a warning and discard current n-gram.
-    KALDI_WARN << "No parent gram, skipping";
+    if (parent_->ShouldWarn())
+      KALDI_WARN << parent_->LineReference()
+                 << " skipped: no parent (n-1)-gram exists";
     return;
   }
 
@@ -225,6 +230,7 @@ void ArpaLmCompilerImpl<HistKey>::ConsumeNGram(
 
   // Add arc from source to dest, whichever way it was found.
   fst_->AddArc(source, fst::StdArc(sym, sym, weight, dest));
+  return;
 }
 
 // Find or create a new state for n-gram defined by key, and ensure it has a
@@ -266,8 +272,6 @@ inline void ArpaLmCompilerImpl<HistKey>::CreateBackoff(
   fst_->AddArc(state, fst::StdArc(sub_eps_, 0, weight, dest_it->second));
 }
 
-}  // namespace
-
 ArpaLmCompiler::~ArpaLmCompiler() {
   if (impl_ != NULL)
     delete impl_;
@@ -286,25 +290,24 @@ void ArpaLmCompiler::HeaderAvailable() {
     max_symbol += NgramCounts()[0];
 
   if (NgramCounts().size() <= 4 && max_symbol < OptimizedHistKey::kMaxData) {
-    impl_ = new ArpaLmCompilerImpl<OptimizedHistKey>(
-        &fst_, Options().bos_symbol, Options().eos_symbol, sub_eps_);
+    impl_ = new ArpaLmCompilerImpl<OptimizedHistKey>(this, &fst_, sub_eps_);
   } else {
-    impl_ = new ArpaLmCompilerImpl<GeneralHistKey>(
-        &fst_, Options().bos_symbol, Options().eos_symbol, sub_eps_);
+    impl_ = new ArpaLmCompilerImpl<GeneralHistKey>(this, &fst_, sub_eps_);
     KALDI_LOG << "Reverting to slower state tracking because model is large: "
               << NgramCounts().size() << "-gram with symbols up to "
               << max_symbol;
   }
 }
 
-void ArpaLmCompiler::ConsumeNGram(const NGram& ngram) {
+void ArpaLmCompiler::ConsumeNGram(const NGram &ngram) {
   // <s> is invalid in tails, </s> in heads of an n-gram.
   for (int i = 0; i < ngram.words.size(); ++i) {
     if ((i > 0 && ngram.words[i] == Options().bos_symbol) ||
         (i + 1 < ngram.words.size()
          && ngram.words[i] == Options().eos_symbol)) {
-      KALDI_WARN << "In line " << LineNumber()
-                 << ": Skipping n-gram with invalid BOS/EOS placement";
+      if (ShouldWarn())
+        KALDI_WARN << LineReference()
+                   << " skipped: n-gram has invalid BOS/EOS placement";
       return;
     }
   }
@@ -313,9 +316,50 @@ void ArpaLmCompiler::ConsumeNGram(const NGram& ngram) {
   impl_->ConsumeNGram(ngram, is_highest);
 }
 
+void ArpaLmCompiler::RemoveRedundantStates() {
+  fst::StdArc::Label backoff_symbol = sub_eps_;
+  if (backoff_symbol == 0) {
+    // The method of removing redundant states implemented in this function
+    // leads to slow determinization of L o G when people use the older style of
+    // usage of arpa2fst where the --disambig-symbol option was not specified.
+    // The issue seems to be that it creates a non-deterministic FST, while G is
+    // supposed to be deterministic.  By 'return'ing below, we just disable this
+    // method if people were using an older script.  This method isn't really
+    // that consequential anyway, and people will move to the newer-style
+    // scripts (see current utils/format_lm.sh), so this isn't much of a
+    // problem.
+    return;
+  }
+
+  fst::StdArc::StateId num_states = fst_.NumStates();
+
+
+  // replace the #0 symbols on the input of arcs out of redundant states (states
+  // that are not final and have only a backoff arc leaving them), with <eps>.
+  for (fst::StdArc::StateId state = 0; state < num_states; state++) {
+    if (fst_.NumArcs(state) == 1 && fst_.Final(state) == fst::TropicalWeight::Zero()) {
+      fst::MutableArcIterator<fst::StdVectorFst> iter(&fst_, state);
+      fst::StdArc arc = iter.Value();
+      if (arc.ilabel == backoff_symbol) {
+        arc.ilabel = 0;
+        iter.SetValue(arc);
+      }
+    }
+  }
+
+  // we could call fst::RemoveEps, and it would have the same effect in normal
+  // cases, where backoff_symbol != 0 and there are no epsilons in unexpected
+  // places, but RemoveEpsLocal is a bit safer in case something weird is going
+  // on; it guarantees not to blow up the FST.
+  fst::RemoveEpsLocal(&fst_);
+  KALDI_LOG << "Reduced num-states from " << num_states << " to "
+            << fst_.NumStates();
+}
+
 void ArpaLmCompiler::ReadComplete() {
   fst_.SetInputSymbols(Symbols());
   fst_.SetOutputSymbols(Symbols());
+  RemoveRedundantStates();
 }
 
 }  // namespace kaldi

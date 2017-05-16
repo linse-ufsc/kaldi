@@ -20,6 +20,7 @@ use File::Spec;
 use Getopt::Long;
 
 my $Usage = <<EOU;
+create_split_dir.pl:
 This script creates storage directories on different file systems, and creates
 symbolic links to those directories.
 
@@ -63,6 +64,10 @@ foreach my $actual_storage (@all_actual_storage) {
 
   # Create the destination directory and make the link.
   system("mkdir -p $actual_storage 2>/dev/null");
+  if ($? != 0) {
+    print STDERR "$0: error creating directory $actual_storage\n";
+    exit(1);
+  }
   { # create a README file for easier deletion.
     open(R, ">$actual_storage/README.txt");
     my $storage_dir = File::Spec->rel2abs($dir);

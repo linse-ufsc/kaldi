@@ -262,9 +262,10 @@ bool ProtoSupervisionToSupervision(
                                       // of H -- will be empty.
 
   HTransducerConfig h_cfg;
-  h_cfg.transition_scale = 0.0;  // we don't want transition probs.
-  h_cfg.push_weights = false;  // there's nothing to push.
 
+  // We don't want to add any transition probabilities as they will be added
+  // when we compose with the denominator graph.
+  h_cfg.transition_scale = 0.0;
 
   VectorFst<StdArc> *h_fst = GetHTransducer(cfst.ILabelInfo(),
                                             ctx_dep,
@@ -277,8 +278,10 @@ bool ProtoSupervisionToSupervision(
   TableCompose(*h_fst, context_dep_fst, &transition_id_fst);
   delete h_fst;
 
-  BaseFloat self_loop_scale = 0.0;   // all transition-scales are 0.0; we aren't
-                                     // using transition-probs here.
+  // We don't want to add any transition probabilities as they will be added
+  // when we compose with the denominator graph.
+  BaseFloat self_loop_scale = 0.0;
+
   bool reorder = true;  // more efficient in general; won't affect results.
   // add self-loops to the FST with transition-ids as its labels.
   AddSelfLoops(trans_model, disambig_syms_h, self_loop_scale, reorder,
@@ -798,27 +801,6 @@ void GetWeightsForRanges(int32 range_length,
       }
     }
   }
-}
-
-
-void GetWeightsForRangesNew(int32 range_length,
-                            int32 num_frames_zeroed,                            
-                            const std::vector<int32> &range_starts,
-                            std::vector<Vector<BaseFloat> > *weights) {
-  KALDI_ASSERT(range_length > 0 && num_frames_zeroed * 2 < range_length);
-  int32 num_ranges = range_starts.size();
-  weights->resize(num_ranges);
-  for (int32 i = 0; i < num_ranges; i++) {
-    (*weights)[i].Resize(range_length);
-    (*weights)[i].Set(1.0);
-  }
-  if (num_frames_zeroed == 0)
-    return;
-  for (int32 i = 1; i < num_ranges; i++)
-    (*weights)[i].Range(0, num_frames_zeroed).Set(0.0);
-  for (int32 i = 0; i + 1 < num_ranges; i++)
-    (*weights)[i].Range(range_length - num_frames_zeroed,
-                        num_frames_zeroed).Set(0.0);
 }
 
 

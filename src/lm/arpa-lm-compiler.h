@@ -39,6 +39,7 @@ class ArpaLmCompiler : public ArpaFileParser {
   ~ArpaLmCompiler();
 
   const fst::StdVectorFst& Fst() const { return fst_; }
+  fst::StdVectorFst* MutableFst() { return &fst_; }
 
  protected:
   // ArpaFileParser overrides.
@@ -46,10 +47,16 @@ class ArpaLmCompiler : public ArpaFileParser {
   virtual void ConsumeNGram(const NGram& ngram);
   virtual void ReadComplete();
 
+
  private:
+  // this function removes states that only have a backoff arc coming
+  // out of them.
+  void RemoveRedundantStates();
+
   int sub_eps_;
   ArpaLmCompilerImplInterface* impl_;  // Owned.
   fst::StdVectorFst fst_;
+  template <class HistKey> friend class ArpaLmCompilerImpl;
 };
 
 }  // namespace kaldi
