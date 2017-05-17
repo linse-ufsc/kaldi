@@ -683,13 +683,14 @@ class CurlInputImpl: public InputImplBase {
    return *is_;
   }
 
-  virtual void Close() {
+  virtual int32 Close() {
    if (!is_) KALDI_ERR << "CurlInputImpl::Close(), file is not open.";
    // I believe this error can only arise from coding error.
    buf_.close();
    delete is_;
    is_ = NULL;
    // Don't check status.
+   return 0;
   }
 
   virtual InputType MyType() { return kCurlInput; }
