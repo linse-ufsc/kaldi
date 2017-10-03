@@ -462,9 +462,12 @@ void ParseOptions::PrintConfig(std::ostream &os) {
   os << '\n';
 }
 
-
 void ParseOptions::ReadConfigFile(const std::string &filename) {
   std::ifstream is(filename.c_str(), std::ifstream::in);
+  ReadConfigFile(is, filename);
+}
+
+void ParseOptions::ReadConfigFile(std::istream &is, const std::string &filename) {
   if (!is.good()) {
     KALDI_ERR << "Cannot open config file: " << filename;
   }

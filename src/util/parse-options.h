@@ -117,6 +117,9 @@ class ParseOptions : public OptionsItf {
   /// program.
   void ReadConfigFile(const std::string &filename);
 
+  /// read from stream.
+  void ReadConfigFile(std::istream &in, const std::string &filename = "");
+
   /// Number of positional parameters (c.f. argc-1).
   int NumArgs() const;
 
