@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Note: this works only on pre-downloaded data on the CLSP servers
+# Change this location to somewhere where you want to put the data.
 data=/export/a05/dgalvez/
 
 data_url=www.openslr.org/resources/31
@@ -198,6 +198,8 @@ fi
 if [ $stage -le 9 ]; then
   local/chain/run_tdnn.sh --stage 0
 fi
+
+# local/grammar/simple_demo.sh
 
 # Don't finish until all background decoding jobs are finished.
 wait
