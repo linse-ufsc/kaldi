@@ -205,7 +205,7 @@ bool curlbuf::fill_buffer() {
         }
 
         if (rc == 0 && t.Elapsed() >= timeout_) {
-            KALDI_WARN << "curlbuf error: timeout" << std::endl;
+            KALDI_WARN << "curlbuf error: timeout";
             return false;
         }
 
